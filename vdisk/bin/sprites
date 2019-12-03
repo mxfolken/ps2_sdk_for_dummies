@@ -1,0 +1,3 @@
+cd /bin
+java -Xms256m -Xmx512m Export3D
+cd /home/developer

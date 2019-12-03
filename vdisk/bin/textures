@@ -1,0 +1,4 @@
+cd /bin
+java -classpath . -Xmx512m RAWDecoder
+cd /home/developer
+

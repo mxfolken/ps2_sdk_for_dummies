@@ -1,0 +1,376 @@
+package j3d;
+
+import java.awt.*;
+import java.awt.image.*;
+import java.util.*;
+import j3d.loader.*;
+
+public class TexturedTriangle3D extends Triangle3D {
+
+  public Point[] tp = new Point[3];
+  public short[][][] texture;
+  private static Hashtable ht = new Hashtable();
+  private static Vector vtex = new Vector();
+
+  private static final int LUM_COEF = 128;
+
+  private TexturedTriangle3D cpy = null;
+
+  public TexturedTriangle3D(Object3D obj, int a, int b, int c, short[][][] texture) {
+    this(obj,null,a,b,c,texture);
+  }
+
+  public TexturedTriangle3D(Object3D obj, Triangle3D origin, int a, int b, int c, short[][][] texture) {
+    super(obj,origin,a,b,c);
+    this.texture = texture;
+  }
+
+  public static void flushTextures()
+  {
+  	vtex.removeAllElements();
+  	ht.clear();
+  }
+
+  public static void addTexture(String path,short[][][]t)
+  {
+    if (!vtex.contains(path))
+    {
+       vtex.addElement(path);
+       ht.put(path,t);
+    }
+  }
+
+  public static void setTexturePath(String path,short[][][]t)
+  {
+    if (vtex.contains(path))
+    {
+    	vtex.removeElement(path);
+    	ht.remove(path);
+    }
+    vtex.addElement(path);
+    ht.put(path,t);
+  }
+
+  public static short[][][] getTexture(String path,BufferedImage texture) {
+    short[][][] t = (short[][][])ht.get(path);
+    if (t==null)
+    {
+       t = getTexture(texture);
+       addTexture(path,t);
+    }
+    return t;
+  }
+
+  public static Vector getTextures()
+  {
+    return vtex;
+  }
+
+  public static Vector getTexturesNames()
+  {
+  	Vector v = new Vector();
+    for (Enumeration e = ht.keys();e.hasMoreElements();)
+    	v.addElement(e.nextElement());
+    return v;
+  }
+
+  public static int getTextureIndex(short[][][] t)
+  {
+	for (Enumeration en=ht.keys();en.hasMoreElements();)
+	{
+		String k = (String)en.nextElement();
+		if (ht.get(k)==t)
+			return vtex.indexOf(k);
+	}
+    return -1;
+  }
+
+  public static BufferedImage getImage(String path) throws Exception
+  {
+	String ext = path.substring(path.lastIndexOf(".")+1).toUpperCase();
+    BufferedImage bi = null;
+    if ("|GIF|JPG|PNG|".indexOf("|"+ext+"|")>=0)
+    {
+       Image img = (new javax.swing.ImageIcon(path)).getImage();
+       bi = new BufferedImage(img.getWidth(null),img.getHeight(null),BufferedImage.TYPE_INT_ARGB);
+       bi.getGraphics().drawImage(img,0,0,null);
+    }
+    else if (ext.equals("TGA"))
+       bi = (BufferedImage)TGADecoder.getImage(path);
+    else if (ext.equals("TIM"))
+       bi = (BufferedImage)TIMDecoder.getImage(path);
+    else if (ext.equals("PCX"))
+       bi = (BufferedImage)PCXDecoder.getImage(path);
+    return bi;
+  }
+
+  public static short[][][] getTexture(String path) throws Exception
+  {
+    BufferedImage bi = getImage(path);
+    return bi==null?null:getTexture(path,bi);
+  }
+
+  public static short[][][] getTexture(BufferedImage texture) {
+    int h,w;
+    int[] btext = new int[w=texture.getWidth()];
+    short[][][] rgbt = new short[h=texture.getHeight()][w][3];
+    for (int i=0;i<h;i++) {
+		texture.getRGB(0,i,w,1,btext,0,w);
+        for (int j=0;j<w;j++) {
+            rgbt[i][j][0] = (short)((btext[j]&0xff0000)>>16);
+            rgbt[i][j][1] = (short)((btext[j]&0xff00)>>8);
+            rgbt[i][j][2] = (short)(btext[j]&0xff);
+        }
+    }
+    return rgbt;
+  }
+
+  public void setTexture(short[][][] texture) {
+    this.texture = texture;
+  }
+
+  public short[][][] getTexture() {
+    return this.texture;
+  }
+
+  public Triangle3D copy(Object3D obj,int d) {
+    //TexturedTriangle3D
+    if (cpy==null) cpy = new TexturedTriangle3D(obj,origin==null?this:origin,a+d,b+d,c+d,texture);
+    else
+    {
+       cpy.obj = obj;
+       cpy.a = a + d;
+       cpy.b = b + d;
+       cpy.c = c + d;
+       cpy.texture = texture;
+    }
+    cpy.tp[0] = tp[0];
+    cpy.tp[1] = tp[1];
+    cpy.tp[2] = tp[2];
+    cpy.alpha = alpha;
+    return cpy;
+  }
+
+  public Triangle3D copy(Object3D obj)
+  {
+  	TexturedTriangle3D t = new TexturedTriangle3D(obj,null,a,b,c,texture);
+  	t.tp[0] = new Point(tp[0].x,tp[0].y);
+  	t.tp[1] = new Point(tp[1].x,tp[1].y);
+  	t.tp[2] = new Point(tp[2].x,tp[2].y);
+  	return t;
+  }
+
+  private static void pointAt(Point p,Point p0,Point p1,float m) {
+    p.x = pointAt(p0.x,p1.x,m);
+    p.y = pointAt(p0.y,p1.y,m);
+  }
+
+  private transient Point p0 = new Point(), p1 = new Point();
+
+  public void paint(int[] img,float[] zbuf,Triangle3D[] tmap,Rectangle r,int[][] c_lights,float[] f_lights) {
+    initPoints();
+    int A,B,C,xA,xB,xC,yA,yB,yC;
+    float zA,zB,zC;
+    int t0,t1,t2;
+
+    if (py[0]<py[1]) {
+       if (py[1]<py[2]) {
+          A = a; B = b; C = c;
+          t0 = 0; t1 = 1; t2 = 2;
+          xA = px[0]; xB = px[1]; xC = px[2];
+          yA = py[0]; yB = py[1]; yC = py[2];
+          zA = pz[0]; zB = pz[1]; zC = pz[2];
+       } else {
+          if (py[0]<py[2]) {
+             A = a; B = c; C = b;
+             t0 = 0; t1 = 2; t2 = 1;
+             xA = px[0]; xB = px[2]; xC = px[1];
+             yA = py[0]; yB = py[2]; yC = py[1];
+             zA = pz[0]; zB = pz[2]; zC = pz[1];
+          } else {
+             A = c; B = a; C = b;
+             t0 = 2; t1 = 0; t2 = 1;
+             xA = px[2]; xB = px[0]; xC = px[1];
+             yA = py[2]; yB = py[0]; yC = py[1];
+             zA = pz[2]; zB = pz[0]; zC = pz[1];
+          }
+       }
+    } else {
+       if (py[0]<py[2]) {
+          A = b; B = a; C = c;
+          t0 = 1; t1 = 0; t2 = 2;
+          xA = px[1]; xB = px[0]; xC = px[2];
+          yA = py[1]; yB = py[0]; yC = py[2];
+          zA = pz[1]; zB = pz[0]; zC = pz[2];
+       } else {
+          if (py[1]<py[2]) {
+             A = b; B = c; C = a;
+             t0 = 1; t1 = 2; t2 = 0;
+             xA = px[1]; xB = px[2]; xC = px[0];
+             yA = py[1]; yB = py[2]; yC = py[0];
+             zA = pz[1]; zB = pz[2]; zC = pz[0];
+          } else {
+             A = c; B = b; C = a;
+             t0 = 2; t1 = 1; t2 = 0;
+             xA = px[2]; xB = px[1]; xC = px[0];
+             yA = py[2]; yB = py[1]; yC = py[0];
+             zA = pz[2]; zB = pz[1]; zC = pz[0];
+          }
+       }
+    }
+
+    if ((yA+r.y>r.height)||(yC+r.y<0)||(Math.max(Math.max(xA,xB),xC)+r.x<0)||(Math.min(Math.min(xA,xB),xC)+r.x>r.width)) return;
+
+    int _wx = r.width - r.x;
+    int _hy = r.height - r.y;
+    if ((xA>=-r.x&&xA<_wx)&&(xB>=-r.x&&xB<_wx)&&(xC>=-r.x&&xC<_wx)&&
+        (yA>=-r.y&&yA<_hy)&&(yB>=-r.y&&yB<_hy)&&(yC>=-r.y&&yC<_hy))
+    {
+       int _dA = (r.x+xA)+(r.y+yA)*r.width;
+       Triangle3D _t = tmap[_dA];
+       if (_t!=null)
+       {
+          int _dB = (r.x+xB)+(r.y+yB)*r.width,
+              _dC = (r.x+xC)+(r.y+yC)*r.width;
+          if((_t==tmap[_dB])&&(_t==tmap[_dC])&&(zA<=zbuf[_dA])&&(zB<=zbuf[_dB])&&(zC<=zbuf[_dC]))
+             return;
+       }
+    }
+
+    int ra = computeColor(c_lights[A][0],f_lights[A],255);
+    int ga = computeColor(c_lights[A][1],f_lights[A],255);
+    int ba = computeColor(c_lights[A][2],f_lights[A],255);
+    int rb = computeColor(c_lights[B][0],f_lights[B],255);
+    int gb = computeColor(c_lights[B][1],f_lights[B],255);
+    int bb = computeColor(c_lights[B][2],f_lights[B],255);
+    int rc = computeColor(c_lights[C][0],f_lights[C],255);
+    int gc = computeColor(c_lights[C][1],f_lights[C],255);
+    int bc = computeColor(c_lights[C][2],f_lights[C],255);
+
+    AB = line(xA,yA,xB,yB,AB);
+    AC = line(xA,yA,xC,yC,AC);
+    BC = line(xB,yB,xC,yC,BC);
+
+    int ia,x2,k;
+    int xl,xr,rl,rr,gl,gr,bl,br,r2,g2,b2;
+    int yBA = yB - yA, yCA = yC - yA, yCB = yC - yB;
+    Point p2,pl,pr;
+    float m,zl,zr,z2;
+    int rwx = _wx - 1;
+    int maxy = _hy - 1;
+    maxy = (maxy<yC?maxy:yC)-1;
+    int miny = Math.max(yA,-r.y);
+    int di = r.x+(miny+r.y)*r.width;
+
+    for (int i=miny;i<=maxy;i++) {
+        if (i<=yB) {
+           xl = AB[ia=i-yA];
+           x2 = AC[ia];
+           m = (yBA == 0 ? 1f : ((float)ia)/yBA);
+           pointAt(p1,tp[t0],tp[t1],m);
+           pl = p1;
+           rl = pointAt(ra,rb,m);
+           gl = pointAt(ga,gb,m);
+           bl = pointAt(ba,bb,m);
+           zl = pointAt(zA,zB,m);
+        } else {
+           xl = BC[i-yB];
+           x2 = AC[ia=i-yA];
+           m = (yCB == 0 ? 1f : ((float)(i-yB))/yCB);
+           pointAt(p1,tp[t1],tp[t2],m);
+           pl = p1;
+           rl = pointAt(rb,rc,m);
+           gl = pointAt(gb,gc,m);
+           bl = pointAt(bb,bc,m);
+           zl = pointAt(zB,zC,m);
+        }
+        if (xl==x2) {
+           if ((xl>1-r.x)&&(xl<rwx)) {
+              if (zl>zbuf[k=xl+di]) {
+                 short[] vp = texture[pl.y][pl.x];
+                 int rt = (vp[0]*rl)/LUM_COEF;
+                 rt = rt>255?255:rt;
+                 int gt = (vp[1]*gl)/LUM_COEF;
+                 gt = gt>255?255:gt;
+                 int bt = (vp[2]*bl)/LUM_COEF;
+                 bt = bt>255?255:bt;
+                 img[k] = (alpha<255 ? computeAlpha(img[k],rt,gt,bt) : 0xff000000|(rt<<16)|(gt<<8)|bt);
+                 zbuf[k] = zl;
+                 tmap[k] = this;
+              }
+           }
+        } else {
+           m = (yCA == 0 ? 1f : ((float)ia)/yCA);
+           pointAt(p0,tp[t0],tp[t2],m);
+           p2 = p0;
+           r2 = pointAt(ra,rc,m);
+           g2 = pointAt(ga,gc,m);
+           b2 = pointAt(ba,bc,m);
+           z2 = pointAt(zA,zC,m);
+           if (xl<x2) {
+              xr = x2; pr = p2; rr = r2; gr = g2; br = b2; zr = z2;
+           } else {
+              xr = xl; xl = x2;
+              zr = zl; zl = z2;
+              pr = pl; pl = p2;
+              rr = rl; rl = r2;
+              gr = gl; gl = g2;
+              br = bl; bl = b2;
+           }
+           int minx = Math.max(xl,1-r.x), maxx = Math.min(xr,rwx)-1, begx = minx - xl;
+           k = minx-1+di;
+           float dx = xr-xl,
+                 dr = (rr-rl)/dx,
+                 dg = (gr-gl)/dx,
+                 db = (br-bl)/dx,
+                 dz = (zr-zl)/dx,
+                 _dx = (pr.x-pl.x)/dx,
+                 _dy = (pr.y-pl.y)/dx,
+                 _r = rl+dr*begx,
+                 _g = gl+dg*begx,
+                 _b = bl+db*begx,
+                 zp = zl+dz*begx,
+                 _x = pl.x+_dx*begx,
+                 _y = pl.y+_dy*begx;
+           if (alpha<255) {
+              for (int j=minx;j<=maxx;j++) {
+                  if (zp>zbuf[++k]) {
+                     short[] vp = texture[(int)_y][(int)_x];
+                     int rt = (vp[0]*(int)_r)/LUM_COEF;
+                     int gt = (vp[1]*(int)_g)/LUM_COEF;
+                     int bt = (vp[2]*(int)_b)/LUM_COEF;
+                     img[k] = computeAlpha(img[k],rt<255?rt:255,gt<255?gt:255,bt<255?bt:255);
+                     zbuf[k] = zp;
+                     tmap[k] = this;
+                  }
+                  _r += dr;
+                  _g += dg;
+                  _b += db;
+                  zp += dz;
+                  _x += _dx;
+                  _y += _dy;
+              }
+           } else {
+              for (int j=minx;j<=maxx;j++) {
+                  if (zp>zbuf[++k]) {
+                     short[] vp = texture[(int)_y][(int)_x];
+                     int rt = (vp[0]*(int)_r)/LUM_COEF;
+                     int gt = (vp[1]*(int)_g)/LUM_COEF;
+                     int bt = (vp[2]*(int)_b)/LUM_COEF;
+                     img[k] = 0xff000000|((rt<255?rt:255)<<16)|((gt<255?gt:255)<<8)|(bt<255? bt:255);
+                     zbuf[k] = zp;
+                     tmap[k] = this;
+                  }
+                  _r += dr;
+                  _g += dg;
+                  _b += db;
+                  zp += dz;
+                  _x += _dx;
+                  _y += _dy;
+              }
+           }
+        }
+        di += r.width;
+    }
+  }
+}
